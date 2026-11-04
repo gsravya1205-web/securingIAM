@@ -1,0 +1,87 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// User model for Human Authentication & RBAC
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  name         String
+  passwordHash String
+  roleId       String
+  role         Role       @relation(fields: [roleId], references: [id])
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  auditLogs    AuditLog[]
+}
+
+// Autonomous AI Agent Identity & RBAC
+model Agent {
+  id           String     @id @default(cuid())
+  name         String     @unique
+  description  String
+  apiKeyHash   String     @unique
+  status       String     @default("ACTIVE") // ACTIVE, SUSPENDED, REVOKED
+  roleId       String
+  role         Role       @relation(fields: [roleId], references: [id])
+  rateLimit    Int        @default(100) // requests per minute
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  auditLogs    AuditLog[]
+}
+
+// Role definition (Admin, Security Officer, Analyst, Autonomous Agent, etc.)
+model Role {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  description String
+  permissions RolePermission[]
+  users       User[]
+  agents      Agent[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+// Granular permission capability (e.g., READ_LOGS, EXECUTE_ACTIONS, ROTATE_KEYS)
+model Permission {
+  id          String           @id @default(cuid())
+  code        String           @unique // e.g. "agent:execute", "audit:read"
+  description String
+  category    String           // e.g. "IDENTITY", "AUDIT", "AGENT_RUNTIME"
+  roles       RolePermission[]
+}
+
+// Join table for Role <-> Permission
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+// Audit trail for human & agent security events
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorType String   // "USER" or "AGENT"
+  actorId   String   // User id or Agent id
+  actorName String   // Snapshot of name
+  action    String   // e.g. "AGENT_KEY_ROTATED", "PERMISSION_GRANTED", "LOGIN_SUCCESS"
+  resource  String   // e.g. "Agent:DataSync-Bot", "Role:SecurityOfficer"
+  status    String   // "SUCCESS" or "DENIED"
+  ipAddress String?
+  details   String?  // JSON or text details
+  timestamp DateTime @default(now())
+
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  agentId   String?
+  agent     Agent?   @relation(fields: [agentId], references: [id])
+}
+
