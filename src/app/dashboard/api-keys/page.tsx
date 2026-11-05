@@ -1,7 +1,7 @@
 import React from "react";
 import { getSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
-import ApiKeyManagementClient from "./ApiKeyManagementClient";
+import AgentCredentialsClient from "../credentials/AgentCredentialsClient";
 
 export const dynamic = "force-dynamic";
 
@@ -20,10 +20,9 @@ export default async function ApiKeysPage() {
   });
 
   return (
-    <ApiKeyManagementClient
+    <AgentCredentialsClient
       initialAgents={agents}
       currentUserRole={session?.roleName || "Employee"}
     />
   );
 }
-

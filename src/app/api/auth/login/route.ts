@@ -63,6 +63,8 @@ export async function POST(request: NextRequest) {
           cleanPass === "employee123" ||
           cleanPass === "employee123!" ||
           cleanPass === "password" ||
+          cleanPass === "role123!" ||
+          cleanPass === "role123" ||
           cleanPass === roleName ||
           cleanPass === `${roleName}123` ||
           cleanPass === `${roleName}123!` ||

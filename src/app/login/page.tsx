@@ -131,7 +131,7 @@ function LoginForm() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="admin123 or 123456"
+                placeholder="123 or admin123"
                 className="w-full pl-10 pr-3.5 py-2.5 bg-[#111A36] border border-slate-700/80 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all font-mono"
               />
             </div>
@@ -185,14 +185,14 @@ function LoginForm() {
 
             <button
               type="button"
-              onClick={() => selectAccountProfile("gayatri@gmail.com", "123456")}
+              onClick={() => selectAccountProfile("gayatri@gmail.com", "123")}
               className="p-2.5 bg-[#111A36] hover:bg-[#1A264F] border border-blue-500/30 rounded-xl text-left transition-colors group cursor-pointer"
             >
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-blue-300 group-hover:text-blue-200">
                   Gayatri (Admin)
                 </span>
-                <span className="text-[10px] text-emerald-400 font-mono">123456</span>
+                <span className="text-[10px] text-emerald-400 font-mono font-bold">123</span>
               </div>
               <div className="text-[10px] text-slate-400 mt-0.5">gayatri@gmail.com</div>
             </button>
@@ -228,7 +228,7 @@ function LoginForm() {
 
           <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 px-1">
             <span className="flex items-center gap-1.5">
-              <KeyRound className="w-3 h-3 text-slate-500" /> Passwords: <code className="text-emerald-400 text-[10px]">admin123</code> / <code className="text-emerald-400 text-[10px]">123456</code>
+              <KeyRound className="w-3 h-3 text-slate-500" /> Passwords: <code className="text-emerald-400 text-[10px]">123</code> / <code className="text-emerald-400 text-[10px]">admin123</code>
             </span>
             <span className="text-[10px] text-slate-500">Simple Demo Auth</span>
           </div>

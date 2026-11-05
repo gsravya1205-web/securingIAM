@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   ShieldCheck,
@@ -11,16 +11,17 @@ import {
   Bot,
   KeyRound,
   Cpu,
-  Clock,
-  ShieldAlert,
-  Activity,
-  FileText,
   Sliders,
-  Lock,
   LogOut,
   Menu,
   X,
+  ChevronDown,
+  ChevronRight,
+  Clock,
   UserCheck,
+  Activity,
+  FileText,
+  ShieldAlert,
 } from "lucide-react";
 
 interface DashboardSidebarProps {
@@ -33,11 +34,40 @@ interface DashboardSidebarProps {
   };
 }
 
+interface NavSubItem {
+  label: string;
+  href: string;
+  tabKey: string;
+}
+
+interface NavItem {
+  label: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  matchPaths?: string[];
+  subItems?: NavSubItem[];
+}
+
 export default function DashboardSidebar({ user }: DashboardSidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentTab = searchParams.get("tab") || "";
   const [loggingOut, setLoggingOut] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Expanded state for domains with sub-sections
+  const [expandedDomains, setExpandedDomains] = useState<Record<string, boolean>>({
+    "Access Governance": true,
+    "Security & Compliance": true,
+  });
+
+  const toggleDomainExpand = (label: string) => {
+    setExpandedDomains((prev) => ({
+      ...prev,
+      [label]: !prev[label],
+    }));
+  };
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -51,23 +81,81 @@ export default function DashboardSidebar({ user }: DashboardSidebarProps) {
     }
   };
 
-  const userPerms = new Set(user.permissions);
-
-  // Full Navigation Items (11 Original Sections + Delegated Access)
-  // In demo mode all domains are fully open and accessible to explore
-  const navItems = [
-    { label: "Overview", href: "/dashboard", icon: LayoutDashboard, requiredPerm: null },
-    { label: "User Management", href: "/dashboard/users", icon: Users, requiredPerm: null },
-    { label: "Roles & Permissions", href: "/dashboard/roles", icon: Shield, requiredPerm: null },
-    { label: "AI Agent Identities", href: "/dashboard/agents", icon: Bot, requiredPerm: null },
-    { label: "API Key Management", href: "/dashboard/api-keys", icon: KeyRound, requiredPerm: null },
-    { label: "Access Control Center", href: "/dashboard/access-control", icon: Cpu, requiredPerm: null },
-    { label: "Pending Approvals", href: "/dashboard/approvals", icon: Clock, requiredPerm: null },
-    { label: "Security Monitoring", href: "/dashboard/monitoring", icon: ShieldAlert, requiredPerm: null },
-    { label: "Audit Logs", href: "/dashboard/audit", icon: Activity, requiredPerm: null },
-    { label: "Compliance Reports", href: "/dashboard/reports", icon: FileText, requiredPerm: null },
-    { label: "Settings", href: "/dashboard/settings", icon: Sliders, requiredPerm: null },
-    { label: "Delegated Access", href: "/dashboard/delegations", icon: UserCheck, requiredPerm: null },
+  /**
+   * EXACT 8-DOMAIN ORDER SPECIFIED:
+   * 1. Overview
+   * 2. User Management
+   * 3. Roles & Permissions
+   * 4. AI Agent Identities
+   * 5. Settings
+   * 6. Agent Credentials
+   * 7. Access Governance
+   * 8. Security & Compliance
+   */
+  const navItems: NavItem[] = [
+    {
+      label: "Overview",
+      href: "/dashboard",
+      icon: LayoutDashboard,
+    },
+    {
+      label: "User Management",
+      href: "/dashboard/users",
+      icon: Users,
+    },
+    {
+      label: "Roles & Permissions",
+      href: "/dashboard/roles",
+      icon: Shield,
+    },
+    {
+      label: "AI Agent Identities",
+      href: "/dashboard/agents",
+      icon: Bot,
+    },
+    {
+      label: "Settings",
+      href: "/dashboard/settings",
+      icon: Sliders,
+    },
+    {
+      label: "Agent Credentials",
+      href: "/dashboard/credentials",
+      icon: KeyRound,
+      matchPaths: ["/dashboard/credentials", "/dashboard/api-keys"],
+    },
+    {
+      label: "Access Governance",
+      href: "/dashboard/governance",
+      icon: Cpu,
+      matchPaths: [
+        "/dashboard/governance",
+        "/dashboard/access-control",
+        "/dashboard/approvals",
+        "/dashboard/delegations",
+      ],
+      subItems: [
+        { label: "Access Decisions & JIT", href: "/dashboard/governance?tab=decisions", tabKey: "decisions" },
+        { label: "Pending Approvals", href: "/dashboard/governance?tab=approvals", tabKey: "approvals" },
+        { label: "Delegated Access", href: "/dashboard/governance?tab=delegations", tabKey: "delegations" },
+      ],
+    },
+    {
+      label: "Security & Compliance",
+      href: "/dashboard/security-compliance",
+      icon: ShieldCheck,
+      matchPaths: [
+        "/dashboard/security-compliance",
+        "/dashboard/monitoring",
+        "/dashboard/audit",
+        "/dashboard/reports",
+      ],
+      subItems: [
+        { label: "Security Overview", href: "/dashboard/security-compliance?tab=overview", tabKey: "overview" },
+        { label: "Audit Activity", href: "/dashboard/security-compliance?tab=audit", tabKey: "audit" },
+        { label: "Compliance Reports", href: "/dashboard/security-compliance?tab=compliance", tabKey: "compliance" },
+      ],
+    },
   ];
 
   const getRoleBadgeStyle = (role: string) => {
@@ -83,6 +171,13 @@ export default function DashboardSidebar({ user }: DashboardSidebarProps) {
       default:
         return "bg-slate-500/20 text-slate-300 border-slate-500/30";
     }
+  };
+
+  const isNavActive = (item: NavItem) => {
+    if (item.matchPaths) {
+      return item.matchPaths.some((p) => pathname.startsWith(p));
+    }
+    return pathname === item.href;
   };
 
   const sidebarContent = (
@@ -142,48 +237,89 @@ export default function DashboardSidebar({ user }: DashboardSidebarProps) {
         </div>
       </div>
 
-      {/* Navigation Items (12 Domain Routes) */}
+      {/* Navigation Items (Exactly 8 Domains in strict order) */}
       <div className="px-3 py-1 space-y-0.5 overflow-y-auto flex-1 min-h-0">
         <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider px-3 py-1">
-          Access Domains
+          Identity Domains (8)
         </div>
 
-        <nav className="space-y-0.5">
+        <nav className="space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const hasPerm = !item.requiredPerm || userPerms.has(item.requiredPerm);
-            const isActive = pathname === item.href;
+            const active = isNavActive(item);
+            const hasSub = Boolean(item.subItems && item.subItems.length > 0);
+            const isExpanded = expandedDomains[item.label] ?? true;
 
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setMobileOpen(false)}
-                className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
-                  isActive
-                    ? "bg-[#2563EB]/20 text-[#38BDF8] border border-[#2563EB]/40 font-semibold shadow-sm"
-                    : hasPerm
-                    ? "text-slate-300 hover:text-white hover:bg-[#111C35]"
-                    : "text-slate-400 hover:text-white hover:bg-[#111C35]"
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Icon
-                    className={`w-4 h-4 shrink-0 ${
-                      isActive
-                        ? "text-[#38BDF8]"
-                        : hasPerm
-                        ? "text-slate-400"
-                        : "text-slate-400"
-                    }`}
-                  />
-                  <span className="truncate">{item.label}</span>
+              <div key={item.label} className="space-y-0.5">
+                <div
+                  className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+                    active
+                      ? "bg-[#2563EB]/20 text-[#38BDF8] border border-[#2563EB]/40 font-semibold shadow-sm"
+                      : "text-slate-300 hover:text-white hover:bg-[#111C35]"
+                  }`}
+                >
+                  <Link
+                    href={item.href}
+                    onClick={() => setMobileOpen(false)}
+                    className="flex items-center gap-2.5 flex-1 min-w-0"
+                  >
+                    <Icon
+                      className={`w-4 h-4 shrink-0 ${
+                        active ? "text-[#38BDF8]" : "text-slate-400"
+                      }`}
+                    />
+                    <span className="truncate">{item.label}</span>
+                  </Link>
+
+                  {hasSub ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleDomainExpand(item.label);
+                      }}
+                      className="p-1 text-slate-400 hover:text-white"
+                    >
+                      {isExpanded ? (
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      ) : (
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                  ) : active ? (
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#38BDF8] shrink-0" />
+                  ) : null}
                 </div>
 
-                {isActive && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#38BDF8] shrink-0" />
+                {/* Sub-items (if domain has sub-sections and is expanded or active) */}
+                {hasSub && isExpanded && (
+                  <div className="ml-5 pl-3 border-l border-[#1E2C4F] space-y-0.5 pt-0.5 pb-1">
+                    {item.subItems!.map((sub) => {
+                      const isSubActive =
+                        active && (currentTab === sub.tabKey || (!currentTab && sub.tabKey === "decisions") || (!currentTab && sub.tabKey === "overview"));
+
+                      return (
+                        <Link
+                          key={sub.label}
+                          href={sub.href}
+                          onClick={() => setMobileOpen(false)}
+                          className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[11px] transition-all ${
+                            isSubActive
+                              ? "text-[#38BDF8] bg-[#2563EB]/10 font-semibold"
+                              : "text-slate-400 hover:text-slate-200 hover:bg-[#111C35]/50"
+                          }`}
+                        >
+                          <span className="truncate">{sub.label}</span>
+                          {isSubActive && (
+                            <span className="w-1 h-1 rounded-full bg-[#38BDF8]" />
+                          )}
+                        </Link>
+                      );
+                    })}
+                  </div>
                 )}
-              </Link>
+              </div>
             );
           })}
         </nav>
