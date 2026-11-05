@@ -123,7 +123,7 @@ export async function createSession(user: SessionUser): Promise<string> {
 
   cookies().set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: false, // Ensure cookies are always accepted over http://localhost without requiring HTTPS
     sameSite: "lax",
     path: "/",
     maxAge: SESSION_EXPIRATION_SECONDS,

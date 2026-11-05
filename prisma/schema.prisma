@@ -9,30 +9,35 @@ datasource db {
 
 // User model for Human Authentication & RBAC
 model User {
-  id           String     @id @default(cuid())
-  email        String     @unique
-  name         String
-  passwordHash String
-  roleId       String
-  role         Role       @relation(fields: [roleId], references: [id])
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  auditLogs    AuditLog[]
+  id                 String            @id @default(cuid())
+  email              String            @unique
+  name               String
+  passwordHash       String
+  roleId             String
+  role               Role              @relation(fields: [roleId], references: [id])
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  auditLogs          AuditLog[]
+  delegationsGranted Delegation[]      @relation("UserDelegations")
+  reviewedApprovals  ApprovalRequest[] @relation("UserReviewedApprovals")
+  elevationsRequested PrivilegeElevation[] @relation("UserElevations")
+  elevationsReviewed  PrivilegeElevation[] @relation("UserReviewedElevations")
 }
 
 // Autonomous AI Agent Identity & RBAC
 model Agent {
-  id           String     @id @default(cuid())
-  name         String     @unique
-  description  String
-  apiKeyHash   String     @unique
-  status       String     @default("ACTIVE") // ACTIVE, SUSPENDED, REVOKED
-  roleId       String
-  role         Role       @relation(fields: [roleId], references: [id])
-  rateLimit    Int        @default(100) // requests per minute
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  auditLogs    AuditLog[]
+  id                  String       @id @default(cuid())
+  name                String       @unique
+  description         String
+  apiKeyHash          String       @unique
+  status              String       @default("ACTIVE") // ACTIVE, SUSPENDED, REVOKED
+  roleId              String
+  role                Role         @relation(fields: [roleId], references: [id])
+  rateLimit           Int          @default(100) // requests per minute
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  auditLogs           AuditLog[]
+  delegationsReceived Delegation[] @relation("AgentDelegations")
 }
 
 // Role definition (Admin, Security Officer, Analyst, Autonomous Agent, etc.)
@@ -83,5 +88,77 @@ model AuditLog {
   user      User?    @relation(fields: [userId], references: [id])
   agentId   String?
   agent     Agent?   @relation(fields: [agentId], references: [id])
+}
+
+// Dual-Control Approval Requests (Human & Agent Requesters)
+model ApprovalRequest {
+  id            String    @id @default(cuid())
+  requesterType String    // "USER" or "AGENT"
+  requesterId   String    // Polymorphic ID: User.id or Agent.id (unconstrained, no forced User FK)
+  requesterName String    // Snapshot of requester name (e.g., "Alex Vance" or "DataSync-Bot")
+  targetAction  String    // e.g., "reports.create", "privilege.elevation"
+  resource      String    // Target resource (e.g., "Financial_Audit_Q4", "Production_DB")
+  justification String    // Business reason provided by requester
+  status        String    @default("PENDING") // PENDING, APPROVED, REJECTED, EXPIRED
+
+  // Separation of Duties: Reviewer MUST be an authenticated human user
+  reviewerId    String?
+  reviewer      User?     @relation("UserReviewedApprovals", fields: [reviewerId], references: [id])
+  reviewerNote  String?
+  reviewedAt    DateTime?
+
+  expiresAt     DateTime? // Auto-expiration for stale approval tickets
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([status])
+  @@index([requesterType, requesterId])
+}
+
+// Delegated Authorization (Human Grantor -> AI Agent Grantee)
+model Delegation {
+  id          String   @id @default(cuid())
+  grantorId   String   // The human user granting authority
+  grantor     User     @relation("UserDelegations", fields: [grantorId], references: [id], onDelete: Cascade)
+  agentId     String   // The AI Agent receiving authority
+  agent       Agent    @relation("AgentDelegations", fields: [agentId], references: [id], onDelete: Cascade)
+  permissions String   // JSON array of delegated permission codes (e.g., '["reports.read","reports.create"]')
+  scope       String?  // Resource constraint boundary (e.g., "department:finance")
+  status      String   @default("ACTIVE") // ACTIVE, REVOKED, EXPIRED
+  reason      String    // Mandatory business justification
+  expiresAt   DateTime  // Strict temporal boundary (TTL)
+  revokedAt   DateTime? // Timestamp when revoked by authorized human
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([grantorId])
+  @@index([agentId])
+  @@index([status])
+}
+
+// Human Just-In-Time (JIT) Temporary Privilege Elevation
+model PrivilegeElevation {
+  id                String    @id @default(cuid())
+  userId            String    // Requester human user ID
+  user              User      @relation("UserElevations", fields: [userId], references: [id], onDelete: Cascade)
+  permissions       String    // JSON array of requested permission codes (e.g. '["users.create","roles.manage"]')
+  requestedRole     String?   // Optional requested privilege level (e.g. "Admin")
+  scope             String?   // Optional resource constraint boundary
+  justification     String    // Mandatory business reason
+  status            String    @default("PENDING") // PENDING, ACTIVE, REJECTED, EXPIRED, REVOKED
+  reviewerId        String?   // Human supervisor who reviewed the request
+  reviewer          User?     @relation("UserReviewedElevations", fields: [reviewerId], references: [id])
+  reviewerNote      String?   // Reason provided by reviewer
+  requestedDuration Int       // Duration in minutes (e.g., 30, 60, 120, 240)
+  approvedDuration  Int?      // Approved duration in minutes
+  activatedAt       DateTime? // Timestamp when approved and activated
+  expiresAt         DateTime? // Strict expiration timestamp
+  revokedAt         DateTime? // Timestamp when revoked
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([expiresAt])
 }
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession, SessionPayload } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { evaluateUserJitPermission } from "@/lib/jit";
 
 export interface AuthorizeResult {
   authorized: boolean;
@@ -45,7 +46,27 @@ export async function authorizeRequest(options: {
 
   // 2. Granular RBAC permission check
   if (options.requiredPermission) {
-    const hasPermission = session.permissions.includes(options.requiredPermission);
+    let hasPermission = session.permissions.includes(options.requiredPermission);
+    let elevationUsed: {
+      id: string;
+      permissions: string[];
+      requestedRole?: string | null;
+      scope?: string | null;
+      expiresAt: Date;
+    } | null = null;
+
+    if (!hasPermission) {
+      // Check for active Human Just-In-Time (JIT) privilege elevation
+      const jitEval = await evaluateUserJitPermission(
+        session.id,
+        options.requiredPermission,
+        options.resource
+      );
+      if (jitEval.hasPermission && jitEval.elevation) {
+        hasPermission = true;
+        elevationUsed = jitEval.elevation;
+      }
+    }
 
     if (!hasPermission) {
       await prisma.auditLog.create({
@@ -56,7 +77,7 @@ export async function authorizeRequest(options: {
           action: options.action,
           resource: options.resource,
           status: "DENIED",
-          details: `RBAC Violation: Role [${session.roleName}] lacks required permission [${options.requiredPermission}].`,
+          details: `RBAC Violation: Role [${session.roleName}] lacks required permission [${options.requiredPermission}] and no active JIT elevation exists.`,
           userId: session.id,
         },
       });
@@ -73,6 +94,24 @@ export async function authorizeRequest(options: {
           { status: 403 }
         ),
       };
+    }
+
+    // If access was granted via JIT elevation, record JIT_ACCESS_ALLOWED audit record
+    if (elevationUsed) {
+      await prisma.auditLog.create({
+        data: {
+          actorType: "USER",
+          actorId: session.id,
+          actorName: session.name,
+          action: "JIT_ACCESS_ALLOWED",
+          resource: options.resource,
+          status: "SUCCESS",
+          details: `JIT Access Allowed: Elevation ticket [${elevationUsed.id}] granted temporary permission [${options.requiredPermission}] until ${elevationUsed.expiresAt.toISOString()}.`,
+          userId: session.id,
+        },
+      });
+
+      return { authorized: true, session };
     }
   }
 

@@ -51,6 +51,8 @@ export default function DashboardHeader({ user }: DashboardHeaderProps) {
         return "Compliance & Governance Reports";
       case "/dashboard/settings":
         return "System & Security Preferences";
+      case "/dashboard/delegations":
+        return "Human-to-Agent Delegated Authorization";
       default:
         return "Security Portal";
     }

@@ -268,13 +268,23 @@ export default function ComplianceReportsClient({
               The compliance evidence package has been synthesized from your active database. All human-in-the-loop approvals, machine token life cycles, and permission checks are included.
             </p>
 
-            <div className="flex justify-end pt-2">
-              <button
-                onClick={() => setDownloadModal(null)}
-                className="px-4 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl font-semibold cursor-pointer"
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <a
+                href="/api/reports?export=csv"
+                download="secureid-audit-ledger.csv"
+                className="px-3.5 py-2 bg-[#172440] hover:bg-[#1E2C4F] border border-[#25365E] text-slate-200 rounded-xl font-semibold inline-flex items-center gap-1.5"
               >
-                Download Package
-              </button>
+                <Download className="w-3.5 h-3.5 text-[#38BDF8]" />
+                <span>Download Audit CSV</span>
+              </a>
+              <a
+                href="/api/reports?export=json"
+                download="secureid-compliance-evidence.json"
+                className="px-4 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl font-semibold inline-flex items-center gap-1.5 shadow-md shadow-blue-600/30"
+              >
+                <Download className="w-3.5 h-3.5 text-white" />
+                <span>Download JSON Evidence Bundle</span>
+              </a>
             </div>
           </div>
         </Modal>

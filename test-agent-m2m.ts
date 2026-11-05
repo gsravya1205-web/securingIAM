@@ -21,7 +21,7 @@ async function run() {
   console.log("🤖   SECUREID - AI AGENT IDENTITY & M2M SECURITY TEST SUITE     ");
   console.log("🤖 =============================================================\n");
 
-  const BASE = "http://127.0.0.1:3040";
+  const BASE = process.env.TEST_BASE || "http://127.0.0.1:3040";
   const results: { id: string; title: string; expected: string; actual: string; pass: boolean }[] = [];
 
   function record(id: string, title: string, expected: string, actual: string, pass: boolean) {
@@ -228,13 +228,21 @@ async function run() {
   // -----------------------------------------------------------------
   // 5. Human-in-the-Loop Approval Queue (Dual-Control)
   // -----------------------------------------------------------------
-  // 5.1 Submit approval request
+  // Re-activate agent to ACTIVE status so it can legitimately submit approval requests
+  await fetch(`${BASE}/api/agents`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Cookie: adminCookie },
+    body: JSON.stringify({ id: createdAgentId, status: "ACTIVE" }),
+  });
+
+  // 5.1 Submit approval request via authenticated Machine Token
   const submitAppr = await fetch(`${BASE}/api/approvals`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${rotatedKey}`,
+    },
     body: JSON.stringify({
-      requesterName: testAgentName,
-      requesterType: "AGENT",
       requestedAction: "DATABASE_BACKUP_EXPORT",
       resource: "Database:dev.db",
       reason: "Quarterly archival replication",

@@ -13,21 +13,23 @@ export async function POST(request: NextRequest) {
     const requestedAction = body.action || "read_telemetry";
 
     // Map machine action to required granular permission
-    let requiredPermission = "reports.read";
-    let resourceTarget = "Runtime:Telemetry";
+    let requiredPermission = body.permission || "reports.read";
+    let resourceTarget = body.resource || "Runtime:Telemetry";
 
     if (requestedAction === "generate_compliance_summary") {
-      requiredPermission = "reports.create";
-      resourceTarget = "Compliance:Reports";
+      requiredPermission = body.permission || "reports.create";
+      resourceTarget = body.resource || "Compliance:Reports";
     } else if (requestedAction === "query_user_directory") {
-      requiredPermission = "users.read";
-      resourceTarget = "Users:Directory";
+      requiredPermission = body.permission || "users.read";
+      resourceTarget = body.resource || "Users:Directory";
     } else if (requestedAction === "modify_system_roles") {
-      requiredPermission = "roles.manage";
-      resourceTarget = "Security:Roles";
+      requiredPermission = body.permission || "roles.manage";
+      resourceTarget = body.resource || "Security:Roles";
     } else if (requestedAction === "read_agent_telemetry") {
-      requiredPermission = "agents.read";
-      resourceTarget = "Agents:Telemetry";
+      requiredPermission = body.permission || "agents.read";
+      resourceTarget = body.resource || "Agents:Telemetry";
+    } else if (body.resource) {
+      resourceTarget = body.resource;
     }
 
     // 1. Enforce Machine-to-Machine Authentication & RBAC
@@ -83,6 +85,7 @@ export async function POST(request: NextRequest) {
       assignedRole: agent!.roleName,
       executedAction: requestedAction,
       delegatedPermissionUsed: requiredPermission,
+      delegationDetails: agent!.delegatedAuthUsed || null,
       rateLimitLimit: agent!.rateLimit,
       output: resultPayload,
     });

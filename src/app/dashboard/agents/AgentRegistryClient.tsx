@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import AgentPlayground from "./AgentPlayground";
 import {
   Bot,
   Plus,
@@ -17,6 +18,7 @@ import {
   Copy,
   Check,
   RefreshCw,
+  Sparkles,
 } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
@@ -52,6 +54,7 @@ export default function AgentRegistryClient({
   initialAgents,
   currentUserRole,
 }: AgentRegistryClientProps) {
+  const [activeTab, setActiveTab] = useState<"registry" | "playground">("registry");
   const [agents, setAgents] = useState<AgentData[]>(initialAgents);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
@@ -195,20 +198,50 @@ export default function AgentRegistryClient({
         <div>
           <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
             <Bot className="w-6 h-6 text-purple-400" />
-            Autonomous AI Agent Registry
+            Autonomous AI Agent Governance
           </h1>
           <p className="text-xs text-slate-400 mt-1">
             Governs non-human machine identities, delegated authority limits, and tool execution boundaries.
           </p>
         </div>
 
-        <button
-          onClick={() => setRegisterModalOpen(true)}
-          className="px-4 py-2.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-semibold rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Register New AI Agent</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Tab Navigation */}
+          <div className="flex items-center bg-[#0B132B] border border-[#1E2C4F] rounded-xl p-1 gap-1">
+            <button
+              onClick={() => setActiveTab("registry")}
+              className={`px-3.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-1.5 transition-all ${
+                activeTab === "registry"
+                  ? "bg-[#2563EB] text-white shadow-md shadow-blue-600/30"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Bot className="w-3.5 h-3.5" />
+              <span>Agent Registry</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("playground")}
+              className={`px-3.5 py-1.5 text-xs font-medium rounded-lg flex items-center gap-1.5 transition-all ${
+                activeTab === "playground"
+                  ? "bg-[#2563EB] text-white shadow-md shadow-blue-600/30"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>Agent Playground (10 Scenarios)</span>
+            </button>
+          </div>
+
+          {activeTab === "registry" && (
+            <button
+              onClick={() => setRegisterModalOpen(true)}
+              className="px-3.5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-semibold rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Register Agent</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Dynamic Feedback Banner */}
@@ -229,8 +262,11 @@ export default function AgentRegistryClient({
         </div>
       )}
 
-      {/* Filter and Search Bar */}
-      <Card>
+      {/* 1. AGENT REGISTRY VIEW */}
+      {activeTab === "registry" && (
+        <>
+          {/* Filter and Search Bar */}
+          <Card>
         <CardContent className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="relative w-full sm:w-72">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -358,6 +394,11 @@ export default function AgentRegistryClient({
           </table>
         </CardContent>
       </Card>
+      </>
+      )}
+
+      {/* 2. AGENT PLAYGROUND & LIVE 10 DEMO SCENARIOS */}
+      {activeTab === "playground" && <AgentPlayground />}
 
       {/* Inspect Agent Details Modal */}
       {selectedAgent && (

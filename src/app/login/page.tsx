@@ -2,7 +2,7 @@
 
 import React, { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ShieldCheck, Lock, Mail, ArrowRight, AlertCircle, Sparkles, KeyRound } from "lucide-react";
+import { ShieldCheck, Lock, Mail, ArrowRight, AlertCircle, Sparkles, KeyRound, Eye, EyeOff } from "lucide-react";
 
 function LoginForm() {
   const router = useRouter();
@@ -11,6 +11,7 @@ function LoginForm() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -103,18 +104,35 @@ function LoginForm() {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1.5">
-              Password
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-xs font-medium text-slate-300">
+                Password
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="text-[11px] text-blue-400 hover:text-blue-300 inline-flex items-center gap-1 cursor-pointer"
+              >
+                {showPassword ? (
+                  <>
+                    <EyeOff className="w-3 h-3" /> Hide
+                  </>
+                ) : (
+                  <>
+                    <Eye className="w-3 h-3" /> Show
+                  </>
+                )}
+              </button>
+            </div>
             <div className="relative">
               <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••••••"
-                className="w-full pl-10 pr-3.5 py-2.5 bg-[#111A36] border border-slate-700/80 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all"
+                placeholder="admin123 or 123456"
+                className="w-full pl-10 pr-3.5 py-2.5 bg-[#111A36] border border-slate-700/80 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all font-mono"
               />
             </div>
           </div>
@@ -140,53 +158,79 @@ function LoginForm() {
 
         {/* Corporate Role Identity Profiles */}
         <div className="mt-8 pt-6 border-t border-slate-800">
-          <div className="flex items-center gap-2 mb-3">
-            <Sparkles className="w-3.5 h-3.5 text-blue-400" />
-            <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-              Role Identity Profiles
-            </span>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+              <span className="text-[11px] font-semibold text-slate-300 uppercase tracking-wider">
+                Quick Demo Sign-In (Click to Fill)
+              </span>
+            </div>
+            <span className="text-[10px] text-blue-400 font-medium">Demo Mode</span>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={() => selectAccountProfile("admin@secureid.local", "Admin123!")}
+              onClick={() => selectAccountProfile("admin@secureid.local", "admin123")}
               className="p-2.5 bg-[#111A36] hover:bg-[#1A264F] border border-slate-700/60 rounded-xl text-left transition-colors group cursor-pointer"
             >
-              <div className="text-xs font-semibold text-white group-hover:text-blue-300">
-                Admin
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-white group-hover:text-blue-300">
+                  Admin
+                </span>
+                <span className="text-[10px] text-blue-400 font-mono">admin123</span>
               </div>
-              <div className="text-[10px] text-slate-400 mt-0.5">11 Perms</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">admin@secureid.local</div>
             </button>
 
             <button
               type="button"
-              onClick={() => selectAccountProfile("manager@secureid.local", "Manager123!")}
-              className="p-2.5 bg-[#111A36] hover:bg-[#1A264F] border border-slate-700/60 rounded-xl text-left transition-colors group cursor-pointer"
+              onClick={() => selectAccountProfile("gayatri@gmail.com", "123456")}
+              className="p-2.5 bg-[#111A36] hover:bg-[#1A264F] border border-blue-500/30 rounded-xl text-left transition-colors group cursor-pointer"
             >
-              <div className="text-xs font-semibold text-white group-hover:text-blue-300">
-                Manager
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-blue-300 group-hover:text-blue-200">
+                  Gayatri (Admin)
+                </span>
+                <span className="text-[10px] text-emerald-400 font-mono">123456</span>
               </div>
-              <div className="text-[10px] text-slate-400 mt-0.5">6 Perms</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">gayatri@gmail.com</div>
             </button>
 
             <button
               type="button"
-              onClick={() => selectAccountProfile("employee@secureid.local", "Employee123!")}
+              onClick={() => selectAccountProfile("manager@secureid.local", "manager123")}
               className="p-2.5 bg-[#111A36] hover:bg-[#1A264F] border border-slate-700/60 rounded-xl text-left transition-colors group cursor-pointer"
             >
-              <div className="text-xs font-semibold text-white group-hover:text-blue-300">
-                Employee
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-white group-hover:text-blue-300">
+                  Manager
+                </span>
+                <span className="text-[10px] text-slate-300 font-mono">manager123</span>
               </div>
-              <div className="text-[10px] text-slate-400 mt-0.5">1 Perm</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">manager@secureid.local</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => selectAccountProfile("employee@secureid.local", "employee123")}
+              className="p-2.5 bg-[#111A36] hover:bg-[#1A264F] border border-slate-700/60 rounded-xl text-left transition-colors group cursor-pointer"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-white group-hover:text-blue-300">
+                  Employee
+                </span>
+                <span className="text-[10px] text-slate-300 font-mono">employee123</span>
+              </div>
+              <div className="text-[10px] text-slate-400 mt-0.5">employee@secureid.local</div>
             </button>
           </div>
 
           <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 px-1">
             <span className="flex items-center gap-1.5">
-              <KeyRound className="w-3 h-3 text-slate-500" /> Passwords: <code className="text-blue-300 text-[10px]">Role123!</code>
+              <KeyRound className="w-3 h-3 text-slate-500" /> Passwords: <code className="text-emerald-400 text-[10px]">admin123</code> / <code className="text-emerald-400 text-[10px]">123456</code>
             </span>
-            <span className="text-[10px] text-emerald-400 font-medium">Bcrypt Hashed</span>
+            <span className="text-[10px] text-slate-500">Simple Demo Auth</span>
           </div>
         </div>
       </div>

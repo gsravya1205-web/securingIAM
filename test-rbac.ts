@@ -34,6 +34,15 @@ async function run() {
     console.log(`   Status:   ${mark}\n`);
   }
 
+  // Ensure test users have no standing JIT elevations so baseline RBAC is tested
+  const emp = await prisma.user.findUnique({ where: { email: "employee@secureid.local" } });
+  if (emp) {
+    await prisma.privilegeElevation.updateMany({
+      where: { userId: emp.id, status: "ACTIVE" },
+      data: { status: "EXPIRED" },
+    });
+  }
+
   // Pre-fetch auth cookies for all 3 roles
   const adminCookie = await loginUser(BASE, "admin@secureid.local", "Admin123!");
   const managerCookie = await loginUser(BASE, "manager@secureid.local", "Manager123!");

@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
         success: true,
         action: "DEACTIVATED",
         restoredCount: updateResult.count,
+        reactivatedCount: updateResult.count,
         message: `Emergency lockdown lifted. ${updateResult.count} agents restored to active service.`,
       });
     }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { evaluateDelegatedPermission } from "@/lib/delegations";
 
 export interface MachineAuthResult {
   authorized: boolean;
@@ -12,6 +13,13 @@ export interface MachineAuthResult {
     permissions: string[];
     rateLimit: number;
     status: string;
+    delegatedAuthUsed?: {
+      delegationId: string;
+      grantorId: string;
+      grantorName: string;
+      scope?: string | null;
+      permission: string;
+    };
   };
   response?: NextResponse;
 }
@@ -293,19 +301,78 @@ export async function authenticateMachineRequest(
     }
   }
 
-  // 6. Granular RBAC Permissions Check
+  // 6. Granular RBAC Permissions & Delegated Authorization Check
   const permissions = agent.role.permissions.map((p) => p.permission.code);
+  const hasStaticPermission = options.requiredPermission ? permissions.includes(options.requiredPermission) : true;
 
-  if (options.requiredPermission && !permissions.includes(options.requiredPermission)) {
+  // Check if an ACTIVE Delegation grants this permission to this agent
+  let delegationCheck: any = null;
+  if (options.requiredPermission) {
+    delegationCheck = await evaluateDelegatedPermission(
+      agent.id,
+      options.requiredPermission,
+      options.resource
+    );
+  }
+
+  if (delegationCheck?.authorized && delegationCheck?.delegation && delegationCheck?.grantor) {
+    // Authorized via Delegation grant
     await prisma.auditLog.create({
       data: {
         actorType: "AGENT",
         actorId: agent.id,
         actorName: agent.name,
-        action: options.action,
+        action: "DELEGATED_ACCESS_ALLOWED",
+        resource: options.resource,
+        status: "SUCCESS",
+        details: `Authorized autonomous execution via Delegation [${delegationCheck.delegation.id}] granted by [${delegationCheck.grantor.name}] for permission [${options.requiredPermission}]. Scope: ${delegationCheck.delegation.scope || "Global"}`,
+        agentId: agent.id,
+        userId: delegationCheck.grantor.id,
+      },
+    });
+
+    return {
+      authorized: true,
+      agent: {
+        id: agent.id,
+        name: agent.name,
+        roleName: agent.role.name,
+        permissions: Array.from(new Set([...permissions, options.requiredPermission!])),
+        rateLimit: agent.rateLimit,
+        status: agent.status,
+        delegatedAuthUsed: {
+          delegationId: delegationCheck.delegation.id,
+          grantorId: delegationCheck.grantor.id,
+          grantorName: delegationCheck.grantor.name,
+          scope: delegationCheck.delegation.scope,
+          permission: options.requiredPermission!,
+        },
+      },
+    };
+  }
+
+  if (options.requiredPermission && !hasStaticPermission) {
+    // Denial path: scope mismatch or lack of delegation
+    let denialAction = options.action;
+    let denialDetails = `RBAC Violation: Agent [${agent.name}] with role [${agent.role.name}] lacks delegated permission [${options.requiredPermission}].`;
+
+    if (delegationCheck?.reason === "SCOPE_MISMATCH") {
+      denialAction = "DELEGATED_ACCESS_DENIED";
+      denialDetails = `Delegated permission [${options.requiredPermission}] exists but target resource [${options.resource}] is outside permitted scope [${delegationCheck.delegation?.scope}].`;
+    } else {
+      denialAction = "DELEGATED_ACCESS_DENIED";
+      denialDetails = `RBAC & Delegation Violation: Agent [${agent.name}] lacks permission [${options.requiredPermission}] and has no active delegation grant for this resource.`;
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        actorType: "AGENT",
+        actorId: agent.id,
+        actorName: agent.name,
+        action: denialAction,
         resource: options.resource,
         status: "DENIED",
-        details: `RBAC Violation: Agent [${agent.name}] with role [${agent.role.name}] lacks delegated permission [${options.requiredPermission}].`,
+        details: denialDetails,
         agentId: agent.id,
       },
     });
@@ -314,9 +381,12 @@ export async function authenticateMachineRequest(
       authorized: false,
       response: NextResponse.json(
         {
-          error: `Access Denied: Machine agent [${agent.name}] lacks delegated permission [${options.requiredPermission}].`,
-          assignedRole: agent.role.name,
+          error: `Access Denied: Machine identity lacks required capability '${options.requiredPermission}'.`,
+          agent: agent.name,
+          role: agent.role.name,
           requiredPermission: options.requiredPermission,
+          reason: delegationCheck?.reason || "NO_ACTIVE_DELEGATION",
+          delegationReason: delegationCheck?.reason || "NO_ACTIVE_DELEGATION",
         },
         { status: 403 }
       ),

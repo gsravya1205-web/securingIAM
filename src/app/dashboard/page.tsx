@@ -13,6 +13,7 @@ import {
   ArrowUpRight,
   Lock,
   Sparkles,
+  Cpu,
 } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/components/ui/Card";
 import { MetricCard } from "@/components/ui/MetricCard";
@@ -32,6 +33,7 @@ export default async function OverviewPage() {
     activeAgents,
     allowedRequests,
     deniedRequests,
+    pendingApprovalsCount,
     recentAudits,
     agentsList,
   ] = await Promise.all([
@@ -41,6 +43,7 @@ export default async function OverviewPage() {
     prisma.agent.count({ where: { status: "ACTIVE" } }),
     prisma.auditLog.count({ where: { status: "SUCCESS" } }),
     prisma.auditLog.count({ where: { status: "DENIED" } }),
+    prisma.approvalRequest.count({ where: { status: "PENDING" } }),
     prisma.auditLog.findMany({
       take: 6,
       orderBy: { timestamp: "desc" },
@@ -51,7 +54,6 @@ export default async function OverviewPage() {
     }),
   ]);
 
-  const pendingApprovalsCount = 3; // Active pending queue count
   const totalDecisions = allowedRequests + deniedRequests;
   const allowedRate =
     totalDecisions > 0
@@ -62,19 +64,38 @@ export default async function OverviewPage() {
     <div className="space-y-6">
       {/* 1. Welcome & Zero-Trust Posture Banner */}
       <div className="bg-gradient-to-r from-[#0B132B] via-[#111C35] to-[#172440] border border-[#1E2C4F] rounded-2xl p-6 shadow-xl relative overflow-hidden">
-        <div className="relative z-10">
-          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#38BDF8] mb-2">
-            <Sparkles className="w-4 h-4" />
-            <span>Enterprise Identity &amp; Agent Governance</span>
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div>
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#38BDF8] mb-2">
+              <Sparkles className="w-4 h-4" />
+              <span>Enterprise Identity &amp; Agent Governance</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
+              Security Overview &amp; IAM Telemetry
+            </h1>
+            <p className="text-slate-400 text-xs sm:text-sm mt-1 max-w-2xl leading-relaxed">
+              Real-time Zero-Trust enforcement monitoring human users and autonomous AI agents. 
+              Currently authenticated as <strong className="text-white">{session?.name}</strong> with{" "}
+              <span className="text-[#38BDF8] font-semibold">{session?.roleName}</span> privileges.
+            </p>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
-            Security Overview &amp; IAM Telemetry
-          </h1>
-          <p className="text-slate-400 text-xs sm:text-sm mt-1 max-w-3xl leading-relaxed">
-            Real-time Zero-Trust enforcement monitoring human users and autonomous AI agents. 
-            Currently authenticated as <strong className="text-white">{session?.name}</strong> with{" "}
-            <span className="text-[#38BDF8] font-semibold">{session?.roleName}</span> privileges.
-          </p>
+
+          <div className="flex items-center gap-3 shrink-0">
+            <Link
+              href="/dashboard/access-control"
+              className="px-4 py-2.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-semibold rounded-xl transition-all shadow-md flex items-center gap-1.5"
+            >
+              <Cpu className="w-4 h-4" />
+              <span>Access Policy Evaluator</span>
+            </Link>
+            <Link
+              href="/dashboard/approvals"
+              className="px-4 py-2.5 bg-[#172440] hover:bg-[#1E2C4F] border border-[#25365E] text-slate-200 text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5"
+            >
+              <Clock className="w-4 h-4 text-[#F59E0B]" />
+              <span>Pending Approvals ({pendingApprovalsCount})</span>
+            </Link>
+          </div>
         </div>
       </div>
 
