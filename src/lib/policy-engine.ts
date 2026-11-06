@@ -28,6 +28,14 @@ export interface PolicyEvaluationResult {
   applicablePermission?: string;
   grantType?: "PERMANENT_ROLE" | "JIT_ELEVATION" | "DELEGATION" | "NONE";
   delegationId?: string;
+  delegationDetails?: {
+    delegationId: string;
+    grantorId: string;
+    grantorName: string;
+    scope?: string | null;
+    permission: string;
+  };
+  delegationReason?: "NO_ACTIVE_DELEGATION" | "SCOPE_MISMATCH" | "GRANTOR_INVALID" | "AGENT_INACTIVE" | string;
   elevationId?: string;
   approvalId?: string;
   policyRule: string;
@@ -149,19 +157,34 @@ export async function evaluateAccessPolicy(
     let hasCapability = staticPerms.includes(action);
     let grantType: "PERMANENT_ROLE" | "DELEGATION" | "NONE" = hasCapability ? "PERMANENT_ROLE" : "NONE";
     let delegationId: string | undefined;
+    let delegationDetails: {
+      delegationId: string;
+      grantorId: string;
+      grantorName: string;
+      scope?: string | null;
+      permission: string;
+    } | undefined;
+    let delegationReason: "NO_ACTIVE_DELEGATION" | "SCOPE_MISMATCH" | "GRANTOR_INVALID" | "AGENT_INACTIVE" | string | undefined;
 
-    // Check Human-to-Agent Delegation if not in static role
-    if (!hasCapability) {
-      trace.push(`[Checking Delegation] Agent lacks standing permission [${action}]. Inspecting active delegations...`);
-      const delEval = await evaluateDelegatedPermission(agent.id, action, resource);
-      if (delEval.authorized && delEval.delegation) {
-        hasCapability = true;
-        grantType = "DELEGATION";
-        delegationId = delEval.delegation.id;
-        trace.push(`[Delegation Active] Valid delegation [${delegationId}] from grantor [${delEval.grantor?.id || "human"}] matches scope.`);
-      } else {
-        trace.push(`[Delegation Check] No valid delegation found: ${delEval.reason}`);
-      }
+    // Check Human-to-Agent Delegation for this agent, action, and resource
+    trace.push(`[Checking Delegation] Inspecting active delegations for agent [${agent.name}] on [${action}]...`);
+    const delEval = await evaluateDelegatedPermission(agent.id, action, resource);
+    if (delEval.authorized && delEval.delegation && delEval.grantor) {
+      hasCapability = true;
+      grantType = "DELEGATION";
+      delegationId = delEval.delegation.id;
+      delegationDetails = {
+        delegationId: delEval.delegation.id,
+        grantorId: delEval.grantor.id,
+        grantorName: delEval.grantor.name,
+        scope: delEval.delegation.scope,
+        permission: action,
+      };
+      delegationReason = undefined;
+      trace.push(`[Delegation Active] Valid delegation [${delegationId}] from grantor [${delEval.grantor.name}] matches scope.`);
+    } else {
+      delegationReason = delEval.reason;
+      trace.push(`[Delegation Check] No valid delegation found: ${delEval.reason}`);
     }
 
     if (!hasCapability) {
@@ -175,7 +198,10 @@ export async function evaluateAccessPolicy(
         subjectStatus: agent.status,
         action,
         resource,
-        reason: `RBAC Violation: Agent [${agent.name}] lacks permission [${action}] and possesses no active delegated authority for resource [${resource}].`,
+        reason: delegationReason === "SCOPE_MISMATCH"
+          ? "SCOPE_MISMATCH"
+          : `RBAC Violation: Agent [${agent.name}] lacks permission [${action}] and possesses no active delegated authority for resource [${resource}].`,
+        delegationReason: delegationReason || "NO_ACTIVE_DELEGATION",
         policyRule: "SEC-POL-003: Autonomous Least-Privilege Boundary",
         timestamp,
         trace,
@@ -191,6 +217,7 @@ export async function evaluateAccessPolicy(
     if (isSensitiveAction || isSensitiveResource) {
       trace.push(`[High-Risk Check] Operation is classified high-risk (actionSensitive=${isSensitiveAction}, resourceSensitive=${isSensitiveResource}).`);
 
+      const now = new Date();
       // Check if an APPROVED unexpired ApprovalRequest exists
       const existingApproval = await prisma.approvalRequest.findFirst({
         where: {
@@ -199,6 +226,10 @@ export async function evaluateAccessPolicy(
           targetAction: action,
           resource,
           status: "APPROVED",
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gt: now } },
+          ],
         },
         orderBy: { updatedAt: "desc" },
       });
@@ -218,6 +249,8 @@ export async function evaluateAccessPolicy(
           applicablePermission: action,
           grantType,
           delegationId,
+          delegationDetails,
+          delegationReason,
           approvalId: existingApproval.id,
           policyRule: "SEC-POL-004: Dual-Control Machine Signoff Satisfied",
           timestamp,
@@ -239,6 +272,8 @@ export async function evaluateAccessPolicy(
         applicablePermission: action,
         grantType,
         delegationId,
+        delegationDetails,
+        delegationReason,
         policyRule: "SEC-POL-005: Dual-Control Autonomous Operation Governance",
         timestamp,
         trace,
@@ -260,6 +295,8 @@ export async function evaluateAccessPolicy(
       applicablePermission: action,
       grantType,
       delegationId,
+      delegationDetails,
+      delegationReason,
       policyRule: "SEC-POL-006: Autonomous Machine Access Authorized",
       timestamp,
       trace,

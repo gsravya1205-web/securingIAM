@@ -231,7 +231,8 @@ export default function SecurityComplianceClient({
       !searchQuery ||
       log.actorName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       log.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.resource.toLowerCase().includes(searchQuery.toLowerCase());
+      log.resource.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (log.details && log.details.toLowerCase().includes(searchQuery.toLowerCase()));
 
     const matchesStatus =
       statusFilter === "ALL" || log.status === statusFilter;

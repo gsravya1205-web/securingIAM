@@ -3,9 +3,13 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { evaluateDelegatedPermission } from "@/lib/delegations";
+import { evaluateAccessPolicy, PolicyEvaluationResult } from "@/lib/policy-engine";
+import { ensureAgentApprovalTicket } from "@/lib/approvals";
 
 export interface MachineAuthResult {
   authorized: boolean;
+  decision?: "ALLOW" | "DENY" | "APPROVAL_REQUIRED";
+  policyResult?: PolicyEvaluationResult;
   agent?: {
     id: string;
     name: string;
@@ -62,6 +66,7 @@ export async function authenticateMachineRequest(
     requiredPermission?: string;
     action: string;
     resource: string;
+    approvalId?: string;
   }
 ): Promise<MachineAuthResult> {
   const authHeader = request.headers.get("authorization") || request.headers.get("Authorization");
@@ -301,68 +306,237 @@ export async function authenticateMachineRequest(
     }
   }
 
-  // 6. Granular RBAC Permissions & Delegated Authorization Check
+  // 6. Centralized Policy Decision Engine (PDP) Evaluation
+  // Evaluates permissions, delegation scope, and dual-control approval requirements
   const permissions = agent.role.permissions.map((p) => p.permission.code);
-  const hasStaticPermission = options.requiredPermission ? permissions.includes(options.requiredPermission) : true;
+  const actionToEvaluate = options.requiredPermission || options.action;
 
-  // Check if an ACTIVE Delegation grants this permission to this agent
-  let delegationCheck: any = null;
-  if (options.requiredPermission) {
-    delegationCheck = await evaluateDelegatedPermission(
-      agent.id,
-      options.requiredPermission,
-      options.resource
-    );
+  // Validate explicitly supplied approval ticket if provided
+  if (options.approvalId && typeof options.approvalId === "string" && options.approvalId.trim().length > 0) {
+    const suppliedTicket = await prisma.approvalRequest.findUnique({
+      where: { id: options.approvalId.trim() },
+    });
+
+    if (!suppliedTicket) {
+      return {
+        authorized: false,
+        decision: "DENY",
+        agent: {
+          id: agent.id,
+          name: agent.name,
+          roleName: agent.role.name,
+          permissions,
+          rateLimit: agent.rateLimit,
+          status: agent.status,
+        },
+        response: NextResponse.json(
+          { error: `Approval ticket [${options.approvalId}] does not exist.` },
+          { status: 403 }
+        ),
+      };
+    }
+
+    if (suppliedTicket.requesterId !== agent.id) {
+      return {
+        authorized: false,
+        decision: "DENY",
+        agent: {
+          id: agent.id,
+          name: agent.name,
+          roleName: agent.role.name,
+          permissions,
+          rateLimit: agent.rateLimit,
+          status: agent.status,
+        },
+        response: NextResponse.json(
+          { error: `Approval ticket [${suppliedTicket.id}] was issued to another identity. Cross-agent reuse prohibited.` },
+          { status: 403 }
+        ),
+      };
+    }
+
+    if (
+      suppliedTicket.targetAction !== options.action &&
+      suppliedTicket.targetAction !== actionToEvaluate
+    ) {
+      return {
+        authorized: false,
+        decision: "DENY",
+        agent: {
+          id: agent.id,
+          name: agent.name,
+          roleName: agent.role.name,
+          permissions,
+          rateLimit: agent.rateLimit,
+          status: agent.status,
+        },
+        response: NextResponse.json(
+          { error: `Approval ticket [${suppliedTicket.id}] is for action [${suppliedTicket.targetAction}], not [${options.action}]. Cross-action reuse prohibited.` },
+          { status: 403 }
+        ),
+      };
+    }
+
+    if (
+      suppliedTicket.resource !== options.resource &&
+      !options.resource.startsWith(suppliedTicket.resource) &&
+      !suppliedTicket.resource.startsWith(options.resource)
+    ) {
+      return {
+        authorized: false,
+        decision: "DENY",
+        agent: {
+          id: agent.id,
+          name: agent.name,
+          roleName: agent.role.name,
+          permissions,
+          rateLimit: agent.rateLimit,
+          status: agent.status,
+        },
+        response: NextResponse.json(
+          { error: `Approval ticket [${suppliedTicket.id}] is scoped to resource [${suppliedTicket.resource}], not [${options.resource}]. Cross-resource reuse prohibited.` },
+          { status: 403 }
+        ),
+      };
+    }
+
+    if (suppliedTicket.status !== "APPROVED") {
+      const reasonMsg =
+        suppliedTicket.status === "EXECUTED"
+          ? `Approval ticket [${suppliedTicket.id}] has already been executed. Single-use dual control prevents reuse.`
+          : suppliedTicket.status === "EXECUTING"
+          ? `Approval ticket [${suppliedTicket.id}] is currently executing in another process. Concurrent execution blocked.`
+          : suppliedTicket.status === "FAILED"
+          ? `Approval ticket [${suppliedTicket.id}] failed during prior execution attempt. Re-approval required.`
+          : `Approval ticket [${suppliedTicket.id}] status is ${suppliedTicket.status}. Execution prohibited.`;
+
+      return {
+        authorized: false,
+        decision: "DENY",
+        agent: {
+          id: agent.id,
+          name: agent.name,
+          roleName: agent.role.name,
+          permissions,
+          rateLimit: agent.rateLimit,
+          status: agent.status,
+        },
+        response: NextResponse.json(
+          { error: reasonMsg },
+          { status: 403 }
+        ),
+      };
+    }
+
+    if (suppliedTicket.expiresAt && new Date(suppliedTicket.expiresAt) < new Date()) {
+      return {
+        authorized: false,
+        decision: "DENY",
+        agent: {
+          id: agent.id,
+          name: agent.name,
+          roleName: agent.role.name,
+          permissions,
+          rateLimit: agent.rateLimit,
+          status: agent.status,
+        },
+        response: NextResponse.json(
+          { error: `Approval ticket [${suppliedTicket.id}] has expired. Re-approval required.` },
+          { status: 403 }
+        ),
+      };
+    }
   }
 
-  if (delegationCheck?.authorized && delegationCheck?.delegation && delegationCheck?.grantor) {
-    // Authorized via Delegation grant
+  // Special-case: Approval request ticket submission by an authenticated agent
+  if (!options.requiredPermission && options.action === "APPROVAL_REQUEST_SUBMIT") {
+    return {
+      authorized: true,
+      decision: "ALLOW",
+      agent: {
+        id: agent.id,
+        name: agent.name,
+        roleName: agent.role.name,
+        permissions,
+        rateLimit: agent.rateLimit,
+        status: agent.status,
+      },
+    };
+  }
+
+  // Evaluate through Centralized PDP
+  const policyResult = await evaluateAccessPolicy({
+    subjectId: agent.id,
+    subjectType: "AGENT",
+    action: actionToEvaluate,
+    resource: options.resource,
+  });
+
+  // Handle APPROVAL_REQUIRED verdict (e.g. sensitive financial reports or high-risk actions)
+  if (policyResult.decision === "APPROVAL_REQUIRED") {
+    // Automatically create or reuse existing unexpired pending approval ticket
+    const { ticket, isNew } = await ensureAgentApprovalTicket(
+      agent,
+      actionToEvaluate,
+      options.resource,
+      policyResult.reason
+    );
+
     await prisma.auditLog.create({
       data: {
         actorType: "AGENT",
         actorId: agent.id,
         actorName: agent.name,
-        action: "DELEGATED_ACCESS_ALLOWED",
+        action: "APPROVAL_REQUIRED",
         resource: options.resource,
-        status: "SUCCESS",
-        details: `Authorized autonomous execution via Delegation [${delegationCheck.delegation.id}] granted by [${delegationCheck.grantor.name}] for permission [${options.requiredPermission}]. Scope: ${delegationCheck.delegation.scope || "Global"}`,
+        status: "DENIED",
+        details: `Operation paused: Machine execution [${actionToEvaluate}] on [${options.resource}] requires supervisory human approval ticket [${ticket.id}]. ${policyResult.reason}`,
         agentId: agent.id,
-        userId: delegationCheck.grantor.id,
       },
     });
 
     return {
-      authorized: true,
+      authorized: false,
+      decision: "APPROVAL_REQUIRED",
+      policyResult,
       agent: {
         id: agent.id,
         name: agent.name,
         roleName: agent.role.name,
-        permissions: Array.from(new Set([...permissions, options.requiredPermission!])),
+        permissions,
         rateLimit: agent.rateLimit,
         status: agent.status,
-        delegatedAuthUsed: {
-          delegationId: delegationCheck.delegation.id,
-          grantorId: delegationCheck.grantor.id,
-          grantorName: delegationCheck.grantor.name,
-          scope: delegationCheck.delegation.scope,
-          permission: options.requiredPermission!,
-        },
       },
+      response: NextResponse.json(
+        {
+          error: "Supervisory Approval Required: Autonomous agent access requires a verified human approval ticket before execution.",
+          verdict: "APPROVAL_REQUIRED",
+          decision: "APPROVAL_REQUIRED",
+          approvalId: ticket.id,
+          status: ticket.status,
+          action: actionToEvaluate,
+          resource: options.resource,
+          agent: agent.name,
+          role: agent.role.name,
+          reason: policyResult.reason,
+          policyRule: policyResult.policyRule,
+          createdAt: ticket.createdAt.toISOString(),
+          isNewTicket: isNew,
+        },
+        { status: 403 }
+      ),
     };
   }
 
-  if (options.requiredPermission && !hasStaticPermission) {
-    // Denial path: scope mismatch or lack of delegation
-    let denialAction = options.action;
-    let denialDetails = `RBAC Violation: Agent [${agent.name}] with role [${agent.role.name}] lacks delegated permission [${options.requiredPermission}].`;
-
-    if (delegationCheck?.reason === "SCOPE_MISMATCH") {
-      denialAction = "DELEGATED_ACCESS_DENIED";
-      denialDetails = `Delegated permission [${options.requiredPermission}] exists but target resource [${options.resource}] is outside permitted scope [${delegationCheck.delegation?.scope}].`;
-    } else {
-      denialAction = "DELEGATED_ACCESS_DENIED";
-      denialDetails = `RBAC & Delegation Violation: Agent [${agent.name}] lacks permission [${options.requiredPermission}] and has no active delegation grant for this resource.`;
-    }
+  // Handle DENY verdict (e.g. lack of capability or scope mismatch)
+  if (policyResult.decision === "DENY") {
+    const isScopeMismatch =
+      policyResult.delegationReason === "SCOPE_MISMATCH" ||
+      policyResult.reason === "SCOPE_MISMATCH";
+    const denialReason = isScopeMismatch
+      ? "SCOPE_MISMATCH"
+      : policyResult.delegationReason || "NO_ACTIVE_DELEGATION";
+    const denialAction = isScopeMismatch ? "DELEGATED_ACCESS_DENIED" : options.action;
 
     await prisma.auditLog.create({
       data: {
@@ -372,28 +546,75 @@ export async function authenticateMachineRequest(
         action: denialAction,
         resource: options.resource,
         status: "DENIED",
-        details: denialDetails,
+        details: isScopeMismatch
+          ? `Delegated permission [${actionToEvaluate}] exists but target resource [${options.resource}] is outside permitted scope.`
+          : `RBAC & Delegation Violation: Agent [${agent.name}] lacks capability [${actionToEvaluate}] on [${options.resource}].`,
         agentId: agent.id,
       },
     });
 
     return {
       authorized: false,
+      decision: "DENY",
+      policyResult,
+      agent: {
+        id: agent.id,
+        name: agent.name,
+        roleName: agent.role.name,
+        permissions,
+        rateLimit: agent.rateLimit,
+        status: agent.status,
+      },
       response: NextResponse.json(
         {
-          error: `Access Denied: Machine identity lacks required capability '${options.requiredPermission}'.`,
+          error: `Access Denied: Machine identity lacks required capability '${actionToEvaluate}'.`,
+          verdict: "DENY",
+          decision: "DENY",
           agent: agent.name,
           role: agent.role.name,
-          requiredPermission: options.requiredPermission,
-          reason: delegationCheck?.reason || "NO_ACTIVE_DELEGATION",
-          delegationReason: delegationCheck?.reason || "NO_ACTIVE_DELEGATION",
+          requiredPermission: actionToEvaluate,
+          reason: denialReason,
+          delegationReason: denialReason,
+          policyRule: policyResult.policyRule,
         },
         { status: 403 }
       ),
     };
   }
 
-  // 7. Successful Machine Authorization -> Log Audit Success
+  // Handle ALLOW verdict (via PERMANENT_ROLE or DELEGATION)
+  if (policyResult.grantType === "DELEGATION" && policyResult.delegationDetails) {
+    await prisma.auditLog.create({
+      data: {
+        actorType: "AGENT",
+        actorId: agent.id,
+        actorName: agent.name,
+        action: "DELEGATED_ACCESS_ALLOWED",
+        resource: options.resource,
+        status: "SUCCESS",
+        details: `Authorized autonomous execution via Delegation [${policyResult.delegationId}] granted by [${policyResult.delegationDetails.grantorName}] for permission [${actionToEvaluate}]. Scope: ${policyResult.delegationDetails.scope || "Global"}`,
+        agentId: agent.id,
+        userId: policyResult.delegationDetails.grantorId,
+      },
+    });
+
+    return {
+      authorized: true,
+      decision: "ALLOW",
+      policyResult,
+      agent: {
+        id: agent.id,
+        name: agent.name,
+        roleName: agent.role.name,
+        permissions: Array.from(new Set([...permissions, actionToEvaluate])),
+        rateLimit: agent.rateLimit,
+        status: agent.status,
+        delegatedAuthUsed: policyResult.delegationDetails,
+      },
+    };
+  }
+
+  // Standard static role execution ALLOW
   await prisma.auditLog.create({
     data: {
       actorType: "AGENT",
@@ -402,13 +623,15 @@ export async function authenticateMachineRequest(
       action: options.action,
       resource: options.resource,
       status: "SUCCESS",
-      details: `Authorized autonomous machine execution for [${agent.name}] under role [${agent.role.name}].`,
+      details: `Authorized autonomous machine execution for [${agent.name}] under role [${agent.role.name}] via ${policyResult.policyRule}.`,
       agentId: agent.id,
     },
   });
 
   return {
     authorized: true,
+    decision: "ALLOW",
+    policyResult,
     agent: {
       id: agent.id,
       name: agent.name,

@@ -73,7 +73,7 @@ interface ApprovalItem {
   targetAction: string;
   resource: string;
   justification: string;
-  status: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
+  status: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED" | "EXECUTED" | "EXECUTING" | "FAILED" | "BLOCKED";
   reviewerId?: string | null;
   reviewerName?: string | null;
   reviewerNote?: string | null;

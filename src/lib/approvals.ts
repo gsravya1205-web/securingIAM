@@ -340,6 +340,89 @@ export async function createApprovalRequest(request: NextRequest) {
 }
 
 /**
+ * Automatically creates or retrieves an existing unexpired PENDING approval request for an AI agent.
+ * Prevents duplicate ticket creation when an active ticket for the same agent, action, and resource is already pending.
+ */
+export async function ensureAgentApprovalTicket(
+  agent: { id: string; name: string },
+  targetAction: string,
+  resource: string,
+  justification?: string
+): Promise<{
+  ticket: {
+    id: string;
+    requesterType: string;
+    requesterId: string;
+    requesterName: string;
+    targetAction: string;
+    resource: string;
+    justification: string;
+    status: string;
+    expiresAt: Date | null;
+    createdAt: Date;
+  };
+  isNew: boolean;
+}> {
+  const now = new Date();
+
+  // 1. Search for an existing active PENDING ticket for this agent, action, and resource
+  const existingPending = await prisma.approvalRequest.findFirst({
+    where: {
+      requesterType: "AGENT",
+      requesterId: agent.id,
+      targetAction,
+      resource,
+      status: "PENDING",
+      OR: [
+        { expiresAt: null },
+        { expiresAt: { gt: now } },
+      ],
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (existingPending) {
+    return { ticket: existingPending, isNew: false };
+  }
+
+  // 2. Default 24 hours TTL for newly provisioned machine approval tickets
+  const expiresAt = new Date(Date.now() + 24 * 3600 * 1000);
+  const cleanJustification =
+    justification?.trim() ||
+    `Autonomous execution of [${targetAction}] on high-risk resource [${resource}] paused pending supervisory human review.`;
+
+  // 3. Atomically create the new pending ticket in SQLite
+  const ticket = await prisma.approvalRequest.create({
+    data: {
+      requesterType: "AGENT",
+      requesterId: agent.id,
+      requesterName: agent.name,
+      targetAction,
+      resource,
+      justification: cleanJustification,
+      status: "PENDING",
+      expiresAt,
+    },
+  });
+
+  // 4. Record audit log for ticket creation
+  await prisma.auditLog.create({
+    data: {
+      actorType: "AGENT",
+      actorId: agent.id,
+      actorName: agent.name,
+      action: "APPROVAL_REQUEST_CREATED",
+      resource,
+      status: "SUCCESS",
+      details: `Automated approval ticket [${ticket.id}] created for agent [${agent.name}] requesting [${targetAction}] on [${resource}].`,
+      agentId: agent.id,
+    },
+  });
+
+  return { ticket, isNew: true };
+}
+
+/**
  * Processes a human supervisor decision (APPROVED | REJECTED).
  * Enforces Separation of Duties, expiration checks, and atomic conditional update.
  */

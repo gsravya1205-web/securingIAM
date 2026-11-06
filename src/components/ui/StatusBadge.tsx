@@ -10,6 +10,11 @@ type BadgeStatus =
   | "REJECTED"
   | "EXPIRED"
   | "SUCCESS"
+  | "EXECUTING"
+  | "EXECUTED"
+  | "CONSUMED"
+  | "FAILED"
+  | "BLOCKED"
   | "DENIED"
   | "COMPLIANT"
   | "ALERT"
@@ -37,12 +42,20 @@ export function StatusBadge({
       case "SUCCESS":
       case "COMPLIANT":
         return "bg-[#10B981]/15 text-[#10B981] border-[#10B981]/30";
+      case "EXECUTED":
+      case "CONSUMED":
+        return "bg-[#38BDF8]/15 text-[#38BDF8] border-[#38BDF8]/30";
+      case "EXECUTING":
+        return "bg-amber-400/15 text-amber-300 border-amber-400/30";
+      case "BLOCKED":
+        return "bg-purple-900/30 text-purple-300 border-purple-500/30";
       case "PENDING":
       case "ROTATED":
         return "bg-[#F59E0B]/15 text-[#F59E0B] border-[#F59E0B]/30";
       case "REVOKED":
       case "REJECTED":
       case "DENIED":
+      case "FAILED":
       case "ALERT":
       case "SUSPENDED":
       case "EXPIRED":
@@ -63,12 +76,20 @@ export function StatusBadge({
       case "SUCCESS":
       case "COMPLIANT":
         return "bg-[#10B981]";
+      case "EXECUTED":
+      case "CONSUMED":
+        return "bg-[#38BDF8]";
+      case "EXECUTING":
+        return "bg-amber-400";
+      case "BLOCKED":
+        return "bg-purple-400";
       case "PENDING":
       case "ROTATED":
         return "bg-[#F59E0B]";
       case "REVOKED":
       case "REJECTED":
       case "DENIED":
+      case "FAILED":
       case "ALERT":
       case "SUSPENDED":
       case "EXPIRED":
